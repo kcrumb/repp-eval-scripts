@@ -539,7 +539,9 @@ def gather_evaluation_results():
             for ws_result_folder in ws_eval_folders:
                 if ws_result_folder.is_dir():
                     ws_size = int(ws_result_folder.name.split('_')[1].strip())
-                    ws_col_index = ws_col_indices[ws_size]
+                    ws_col_index = ws_col_indices.get(ws_size, None)
+                    if ws_col_index is None:
+                        continue
                     eval_results_file = Path(ws_result_folder, 'results.txt')
                     map_value = get_map_from_file(results_file=eval_results_file)
                     f1_value = calculate_f1(results_file=eval_results_file)
