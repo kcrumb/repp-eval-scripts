@@ -318,10 +318,7 @@ def filter_raw_yolo_predictions(video_folder: Path):
     print('\t>> {} x {}'.format(image_width, image_height))
 
     # get minimum prediction score
-    repp_config = Path('yolo_repp_cfg.json').resolve()
-    with open(repp_config, mode='r') as f:
-        repp_config_json = json.load(f)
-    min_pred_score = repp_config_json['min_pred_score']
+    min_pred_score = get_min_prediction_score()
 
     # create new folder or delete if it exists
     threshold_folder = Path(video_folder, 'yolo_predictions', 'threshold_{}'.format(min_pred_score))
