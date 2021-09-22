@@ -5,8 +5,14 @@ Make a copy of your data before running this script. This script will delete and
 
 Expected structure:
     - root_video_folder/frames
+
     - root_video_folder/gt
+
+      - expected format: <label> <top-left-x> <top-left-y> <bottom-right-x> <bottom-right-y>
+
     - root_video_folder/yolo_predictions(raw)
+
+      - expected format: <class-id> <rel-x-center> <rel-y-center> <rel-width> <rel-height>, <confidence>
 
 Folder explanation:
     - frames: contains all frames; some will be deleted if frame does not have a prediction
@@ -44,7 +50,10 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-# ========== CONFIG ==========
+# ==============================
+# =========== CONFIG ===========
+# ==============================
+
 # REPP config
 repp_project_path = Path('D:/Development/Projects/repp')
 repp_python_executable = Path(repp_project_path, 'venv/Scripts/python.exe')
