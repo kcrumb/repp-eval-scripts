@@ -29,6 +29,8 @@ import subprocess
 import sys
 from ast import literal_eval
 from pathlib import Path
+# REPP config
+from typing import Tuple
 
 from PIL import Image
 from tqdm import tqdm
@@ -37,17 +39,13 @@ from tqdm import tqdm
 # =========== CONFIG ===========
 # ==============================
 
-# REPP config
 repp_project_path = Path('D:/Development/Projects/repp')
 repp_python_executable = Path(repp_project_path, 'venv/Scripts/python.exe')
 # Object Detection Metrics config
 odm_project_path = Path('D:/Development/Projects/Object-Detection-Metrics-master')
 odm_python_executable = Path(odm_project_path, 'venv/Scripts/python.exe')
 # Video evaluation config
-video_folders = [
-    'D:/Development/REPP_TEST/uniklinikum-endo_ci_3',
-    'D:/Development/REPP_TEST/uniklinikum-endo_cj_4'
-]
+sequence_numbers = [1]
 repp_rt_window_sizes = [100, 200]
 excel_file_output = Path('D:/Development/REPP_TEST')
 giana_source = Path('D:/Development/GIANA_videos/GIANA_frames_gt')
@@ -55,7 +53,7 @@ giana_yolo_predictions = Path('D:/Development/GIANA_videos/GIANA_yolo_prediction
 first_frame_duplicates = 1000
 
 
-def separate_frames_gt(source_sequence_folder: Path):
+def separate_frames_gt(source_sequence_folder: Path) -> Tuple[bool, bool]:
     """Separate the frame and the gt-files into two folder named 'frames' and 'gt'.
     """
     print('> Separate frames and ground truth files')
@@ -76,7 +74,7 @@ def separate_frames_gt(source_sequence_folder: Path):
         print('>> Skip: GT folder already exists.')
 
     if frame_folder_exists and gt_folder_exists:
-        return
+        return frame_folder_exists, gt_folder_exists
 
     for file in tqdm(source_sequence_folder.iterdir()):
         if file.suffix == '.png' and not frame_folder_exists:
@@ -88,26 +86,24 @@ def separate_frames_gt(source_sequence_folder: Path):
                 not file.suffix == '.txt' and not gt_folder_exists):
             print('The following file cannot be mapped', str(file), file=sys.stderr)
     print('>> Done separating')
-    # if not frame_folder_exists:
-        # duplicate_first_frame(sequence_folder=frame_folder.parent)
+    return frame_folder_exists, gt_folder_exists
 
 
-def duplicate_first_frame(sequence_folder: Path):
+def duplicate_first(folder: Path):
     """Duplicates the first frame n-times and renumbering the rest
     """
     print('> Duplicate first frame {} times'.format(first_frame_duplicates))
-    frame_folder = Path(sequence_folder, 'frames')
 
     print('>> Renumber frames by adding ', first_frame_duplicates)
     # rename frames
-    for frame_file in frame_folder.iterdir():
+    for frame_file in folder.iterdir():
         frame_number = int(frame_file.name[:frame_file.name.rindex('.')])
         frame_number += first_frame_duplicates
         frame_file.rename(Path(frame_file.parent, str(frame_number) + frame_file.suffix))
     print('>> Done renumbering')
 
     print('>> Duplicate first frame')
-    frames = [f for f in frame_folder.iterdir()]
+    frames = [f for f in folder.iterdir()]
     frames.sort(key=lambda f: int(f.name[:f.name.rindex('.')]))
     first_frame = frames[0]
     for i in tqdm(range(1, first_frame_duplicates + 1)):
@@ -115,7 +111,20 @@ def duplicate_first_frame(sequence_folder: Path):
     print('>> Done duplicating')
 
 
-def copy_yolo_predictions(sequence_folder: Path):
+def delete_first(folder: Path):
+    """Deletes the first n files and renumbering the rest
+    """
+    print('> Delete first {} files'.format(first_frame_duplicates))
+
+    files = [f for f in folder.iterdir()]
+    files.sort(key=lambda f: int(f.name[:f.name.rindex('.')]))
+    for f in files:
+        filename_number = int(f.name[:f.name.rindex('.')])
+        if filename_number <= first_frame_duplicates:
+            f.unlink()
+
+
+def copy_yolo_predictions(sequence_folder: Path) -> bool:
     """Get yolo predictions and copy them into the video sequence folder and add missing prediction files
     """
     print('> Start coping YOLO predictions for', str(sequence_folder))
@@ -125,11 +134,13 @@ def copy_yolo_predictions(sequence_folder: Path):
                                   f.name.split('-')[0] == sequence_number]
     sequence_prediction_folder = Path(sequence_folder, 'yolo_predictions(raw)')
 
-    if sequence_prediction_folder.exists():
+    yolo_raw_folder_exists = sequence_prediction_folder.exists()
+    if yolo_raw_folder_exists:
         print('>> Skip: YOLO predictions folder already exists.')
-        return
+        return yolo_raw_folder_exists
 
     print('>> Copy YOLO predictions into sequence folder')
+    sequence_prediction_folder.mkdir()
     for file in tqdm(video_sequence_predictions):
         filename = file.name.split('-')[1]
         shutil.copy(file, Path(sequence_prediction_folder, filename))
@@ -143,6 +154,7 @@ def copy_yolo_predictions(sequence_folder: Path):
     for file_number in tqdm(missing_files, position=0):
         Path(sequence_prediction_folder, '{}.txt'.format(file_number)).touch()
     print('>> DONE coping')
+    return yolo_raw_folder_exists
 
 
 def pickle_predictions(sequence_folder: Path):
@@ -278,7 +290,8 @@ def execute_repp(sequence_folder: Path):
         min_pred_score = repp_config_json['min_pred_score']
 
         # create folder to save individual file or delete folder if existing
-        repp_predictions_output_folder = Path(sequence_folder, 'repp_predictions', 'threshold_{}'.format(min_pred_score))
+        repp_predictions_output_folder = Path(sequence_folder, 'repp_predictions',
+                                              'threshold_{}'.format(min_pred_score))
         if repp_predictions_output_folder.exists():
             print('>> Delete REPP prediction folder for new predictions:', str(repp_predictions_output_folder))
             for f in repp_predictions_output_folder.iterdir():
@@ -408,10 +421,56 @@ def get_min_prediction_score() -> float:
     return repp_config_json['min_pred_score']
 
 
+def duplicate_first_files(eval_sequence_folder: Path, frame_folder_exists: bool, gt_folder_exists: bool,
+                          yolo_raw_folder_exists: bool):
+    # duplicate first frame
+    if not frame_folder_exists:
+        print('>> Duplicate first frame')
+        duplicate_first(folder=Path(eval_sequence_folder, 'frames'))
+    # duplicate first gt file
+    if not gt_folder_exists:
+        print('>> Duplicate first GT file')
+        duplicate_first(folder=Path(eval_sequence_folder, 'gt'))
+    # duplicate first yolo raw prediction file
+    if not yolo_raw_folder_exists:
+        print('>> Duplicate first raw YOLO prediction file')
+        duplicate_first(folder=Path(eval_sequence_folder, 'yolo_predictions(raw)'))
+
+
+def delete_first_files_from_folders(eval_sequence_folder: Path):
+    print('> Delete files until', first_frame_duplicates)
+    min_pred_score = get_min_prediction_score()
+    repp_rt_threshold_folder = Path(eval_sequence_folder, 'repp_rt_predictions', 'threshold_{}'.format(min_pred_score))
+    for ws_folder in repp_rt_threshold_folder.iterdir():
+        print('>> Delete files from', str(ws_folder))
+        delete_first(folder=ws_folder)
+
+    repp_threshold_folder = Path(eval_sequence_folder, 'repp_predictions', 'threshold_{}'.format(min_pred_score))
+    print('>> Delete files from', str(repp_threshold_folder))
+    delete_first(folder=repp_threshold_folder)
+
+    yolo_threshold_folder = Path(eval_sequence_folder, 'yolo_predictions', 'threshold_{}'.format(min_pred_score))
+    print('>> Delete files from', str(yolo_threshold_folder))
+    delete_first(folder=yolo_threshold_folder)
+
+
+def main():
+    for seq_number in sequence_numbers:
+        source_sequence_folder = Path(giana_source, str(seq_number))
+        eval_sequence_folder = Path(giana_source.parent, 'GIANA_evaluation', str(seq_number))
+
+        frame_folder_exists, gt_folder_exists = separate_frames_gt(source_sequence_folder=source_sequence_folder)
+        yolo_raw_folder_exists = copy_yolo_predictions(sequence_folder=eval_sequence_folder)
+
+        duplicate_first_files(eval_sequence_folder, frame_folder_exists, gt_folder_exists, yolo_raw_folder_exists)
+
+        pickle_predictions(sequence_folder=eval_sequence_folder)
+        execute_repp_rt(sequence_folder=eval_sequence_folder)
+        execute_repp(sequence_folder=eval_sequence_folder)
+        filter_raw_yolo_predictions(sequence_folder=eval_sequence_folder)
+
+        delete_first_files_from_folders(eval_sequence_folder)
+
+
 if __name__ == '__main__':
-    separate_frames_gt(source_sequence_folder=Path(giana_source, '1'))
-    copy_yolo_predictions(sequence_folder=Path(giana_source.parent, 'GIANA_evaluation', '1'))
-    pickle_predictions(sequence_folder=Path(giana_source.parent, 'GIANA_evaluation', '1'))
-    execute_repp_rt(sequence_folder=Path(giana_source.parent, 'GIANA_evaluation', '1'))
-    # execute_repp(sequence_folder=Path(giana_source.parent, 'GIANA_evaluation', '1'))
-    # filter_raw_yolo_predictions(sequence_folder=Path(giana_source.parent, 'GIANA_evaluation', '1'))
+    main()
