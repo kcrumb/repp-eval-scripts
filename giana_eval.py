@@ -30,8 +30,9 @@ import sys
 from ast import literal_eval
 from pathlib import Path
 # REPP config
-from typing import Tuple
+from typing import Tuple, List
 
+import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
@@ -45,9 +46,10 @@ repp_python_executable = Path(repp_project_path, 'venv/Scripts/python.exe')
 odm_project_path = Path('D:/Development/Projects/Object-Detection-Metrics-master')
 odm_python_executable = Path(odm_project_path, 'venv/Scripts/python.exe')
 # Video evaluation config
-sequence_numbers = [1]
+# sequence_numbers = [5]
+sequence_numbers = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
 repp_rt_window_sizes = [100, 200]
-excel_file_output = Path('D:/Development/REPP_TEST')
+excel_file_output = Path('D:/Development/GIANA_videos/GIANA_evaluation')
 giana_source = Path('D:/Development/GIANA_videos/GIANA_frames_gt')
 giana_yolo_predictions = Path('D:/Development/GIANA_videos/GIANA_yolo_predictions')
 first_frame_duplicates = 1000
@@ -81,12 +83,54 @@ def separate_frames_gt(source_sequence_folder: Path) -> Tuple[bool, bool]:
             shutil.copy(file, Path(frame_folder, file.name))
         elif file.suffix == '.txt' and not gt_folder_exists:
             # TODO: convert into VOC format
-            shutil.copy(file, Path(gt_folder, file.name))
+            # writer new gt file with converted data format
+            lines = convert_gt_to_voc(file, source_sequence_folder)
+            with open(Path(gt_folder, file.name), mode='w') as f:
+                f.write('\n'.join(lines))
+            # shutil.copy(file, Path(gt_folder, file.name))
         elif (not file.suffix == '.png' and not frame_folder_exists) and (
                 not file.suffix == '.txt' and not gt_folder_exists):
             print('The following file cannot be mapped', str(file), file=sys.stderr)
     print('>> Done separating')
     return frame_folder_exists, gt_folder_exists
+
+
+def convert_gt_to_voc(gt_file: Path, source_sequence_folder: Path) -> List[str]:
+    """ Convert GT file into VOC data format
+    """
+
+    def convert_line_to_tuple(line: str) -> tuple:
+        """Converts a string line into a tuple of number values.
+        """
+        converted_line = []
+        for value in line.split(' '):
+            if isinstance(literal_eval(value), int):
+                converted_line.append(int(value))
+            elif isinstance(literal_eval(value), float):
+                converted_line.append(float(value))
+            else:
+                converted_line.append(value)
+        return tuple(converted_line)
+
+    # get image resolution
+    frame_file = gt_file.name[:gt_file.name.rindex('.')] + '.png'
+    video_frame = Path(source_sequence_folder, frame_file)
+    image_width, image_height = Image.open(video_frame).size
+
+    # open file and get yolo predictions
+    with open(gt_file, mode='r') as f:
+        predication_lines = [convert_line_to_tuple(line) for line in f.read().splitlines()]
+
+    lines = []
+    for line in predication_lines:
+        class_id, rel_x_center, rel_y_center, rel_box_width, rel_box_height = line
+        lines.append('polyp {left} {top} {right} {bottom}'.format(
+            left=(rel_x_center * image_width) - ((rel_box_width * image_width) / 2),
+            top=(rel_y_center * image_height) - ((rel_box_height * image_height) / 2),
+            right=(rel_x_center * image_width) + ((rel_box_width * image_width) / 2),
+            bottom=(rel_y_center * image_height) + ((rel_box_height * image_height) / 2)))
+
+    return lines
 
 
 def duplicate_first(folder: Path):
@@ -96,7 +140,9 @@ def duplicate_first(folder: Path):
 
     print('>> Renumber frames by adding ', first_frame_duplicates)
     # rename frames
-    for frame_file in folder.iterdir():
+    frames = [f for f in folder.iterdir()]
+    frames.sort(key=lambda f: int(f.name[:f.name.rindex('.')]))
+    for frame_file in reversed(frames):
         frame_number = int(frame_file.name[:frame_file.name.rindex('.')])
         frame_number += first_frame_duplicates
         frame_file.rename(Path(frame_file.parent, str(frame_number) + frame_file.suffix))
@@ -122,6 +168,17 @@ def delete_first(folder: Path):
         filename_number = int(f.name[:f.name.rindex('.')])
         if filename_number <= first_frame_duplicates:
             f.unlink()
+
+
+def rename_frame_numbers_subtract(folder: Path):
+    """Rename filenames to old frame number, e.g. 1001.txt will become 1.txt (for 1000 duplicates)
+    """
+    print('> Subtract frame number by', first_frame_duplicates, 'in', str(folder))
+
+    for frame_file in folder.iterdir():
+        frame_number = int(frame_file.name[:frame_file.name.rindex('.')])
+        frame_number -= first_frame_duplicates
+        frame_file.rename(Path(frame_file.parent, str(frame_number) + frame_file.suffix))
 
 
 def copy_yolo_predictions(sequence_folder: Path) -> bool:
@@ -439,19 +496,261 @@ def duplicate_first_files(eval_sequence_folder: Path, frame_folder_exists: bool,
 
 def delete_first_files_from_folders(eval_sequence_folder: Path):
     print('> Delete files until', first_frame_duplicates)
+
+    gt_folder = Path(eval_sequence_folder, 'gt')
+    print('>> Delete files from', str(gt_folder))
+    delete_first(folder=gt_folder)
+    rename_frame_numbers_subtract(folder=gt_folder)
+
+    frames_folder = Path(eval_sequence_folder, 'frames')
+    print('>> Delete files from', str(frames_folder))
+    delete_first(folder=frames_folder)
+    rename_frame_numbers_subtract(folder=frames_folder)
+
     min_pred_score = get_min_prediction_score()
     repp_rt_threshold_folder = Path(eval_sequence_folder, 'repp_rt_predictions', 'threshold_{}'.format(min_pred_score))
     for ws_folder in repp_rt_threshold_folder.iterdir():
         print('>> Delete files from', str(ws_folder))
         delete_first(folder=ws_folder)
+        rename_frame_numbers_subtract(folder=ws_folder)
 
     repp_threshold_folder = Path(eval_sequence_folder, 'repp_predictions', 'threshold_{}'.format(min_pred_score))
     print('>> Delete files from', str(repp_threshold_folder))
     delete_first(folder=repp_threshold_folder)
+    rename_frame_numbers_subtract(folder=repp_threshold_folder)
 
     yolo_threshold_folder = Path(eval_sequence_folder, 'yolo_predictions', 'threshold_{}'.format(min_pred_score))
     print('>> Delete files from', str(yolo_threshold_folder))
     delete_first(folder=yolo_threshold_folder)
+    rename_frame_numbers_subtract(folder=yolo_threshold_folder)
+
+
+def get_prediction_folders(folder: Path, min_pred_score: float) -> List[Path]:
+    """Helper Function:
+    Get all folders that should be evaluated (folder name: threshold_XX).
+    For REPP RT the structure is threshold_XX/ws_XXX for different window sizes.
+    """
+
+    def threshold_folder_lookup(prediction_folder: Path, threshold: float) -> Path:
+        for file in prediction_folder.iterdir():
+            if file.is_dir():
+                score = file.name[file.name.rindex('_') + 1:]
+                if score == str(threshold):
+                    return file
+
+    prediction_folders = []
+
+    repp_rt_prediction_folder = Path(folder, 'repp_rt_predictions')
+    if repp_rt_prediction_folder.exists():
+        threshold_folder = threshold_folder_lookup(repp_rt_prediction_folder, min_pred_score)
+        if threshold_folder is not None:
+            for ws_folder in threshold_folder.iterdir():
+                if ws_folder.is_dir() and ws_folder.name[:ws_folder.name.rindex('_')] == 'ws':
+                    prediction_folders.append(ws_folder)
+
+    repp_prediction_folder = Path(folder, 'repp_predictions')
+    if repp_prediction_folder.exists():
+        threshold_folder = threshold_folder_lookup(repp_prediction_folder, min_pred_score)
+        if threshold_folder is not None:
+            prediction_folders.append(threshold_folder)
+
+    yolo_prediction_folder = Path(folder, 'yolo_predictions')
+    if yolo_prediction_folder.exists():
+        threshold_folder = threshold_folder_lookup(yolo_prediction_folder, min_pred_score)
+        if threshold_folder is not None:
+            prediction_folders.append(threshold_folder)
+
+    return prediction_folders
+
+
+def add_empty_files_to_predictions(folder: Path):
+    """Delete all predictions files that do not have a correspondent GT file.
+    Additionally add empty txt-file if there is an GT file but no prediction file
+    """
+    print('> Start filtering predictions')
+
+    gt_folder = Path(folder, 'gt')
+    gt_files = set([f.name for f in gt_folder.iterdir()])
+    min_pred_score = get_min_prediction_score()
+    prediction_folders = get_prediction_folders(folder=folder, min_pred_score=min_pred_score)
+
+    print('>> Add empty files to prediction if missing')
+    # add empty txt file if there was no prediction file to a GT file
+    for folder in tqdm(prediction_folders, position=0):
+        prediction_files = set([f.name for f in folder.iterdir()])
+        missing_prediction_files = gt_files - prediction_files
+        for file in tqdm(missing_prediction_files, position=0):
+            Path(folder, file).touch()
+
+    print('>> Done filtering predictions')
+
+
+def execute_object_detection_metrics(folder: Path):
+    """Execute evaluation of REPP, REPP RT and YOLO (with threshold)
+    """
+
+    print('> Start metric calculation of REPP, REPP RT and YOLO')
+    odm_script = Path(odm_project_path, 'pascalvoc.py')
+    gt_path = Path(folder, 'gt')
+
+    # get minimum prediction score, which is used the to find the correct prediction folder
+    min_pred_score = get_min_prediction_score()
+    prediction_folders = get_prediction_folders(folder=folder, min_pred_score=min_pred_score)
+
+    print('>> Calculate metrics for following folders (threshold {}):'.format(min_pred_score))
+    for pred_folder in prediction_folders:
+        print('\t', str(pred_folder))
+
+    # change working directory to ODM project
+    this_working_dir = os.getcwd()
+    print('>> Change working directory to REPP project', odm_project_path)
+    os.chdir(odm_project_path)
+
+    # iterate over the folders with predictions to evaluate
+    for detection_path in prediction_folders:
+        # create folder for evaluation result
+        eval_save_path = Path(folder, 'eval', detection_path.relative_to(folder))
+        eval_save_path.mkdir(parents=True, exist_ok=True)
+        # check delete folder contents if evaluation files already exist
+        print('>> Delete evaluation folder content for new evaluation:', str(eval_save_path))
+        for eval_file in eval_save_path.iterdir():
+            eval_file.unlink()
+
+        subprocess.call([str(odm_python_executable),
+                         str(odm_script),
+                         '-det', str(detection_path),
+                         '-gt', str(gt_path),
+                         '-t', '0.5',
+                         '--savepath', str(eval_save_path),
+                         '--noplot'])
+
+    # change working directory back
+    print('>> Done. Change working directory back to', str(this_working_dir))
+    os.chdir(this_working_dir)
+
+
+def gather_evaluation_results():
+    """Gathers all evaluation results from a specified threshold, calculate F1-score
+    and generates a table within a excel file.
+    """
+
+    def get_map_from_file(results_file: Path) -> float:
+        """Search for the mAP value in the eval results file (mostly at the bottom), parses the value
+        and converts the percentage value in to a value between 0 and 1.
+        """
+        with open(results_file, mode='r') as f:
+            lines = f.readlines()
+        map_line = ''
+        for line in reversed(lines):
+            line = line.strip()
+            if line.startswith('mAP'):
+                map_line = line
+                break
+        # parse mAP value
+        return float(map_line.split(':')[1].strip()[:-1]) / 100.0
+
+    def calculate_f1(results_file: Path) -> float:
+        """Calculate the F1 score with the precision and recall values from the results file.
+        """
+        with open(results_file, mode='r') as f:
+            lines = f.readlines()
+        # read precision and recall
+        precision, recall = -1, -1
+        for line in lines:
+            if line.startswith('Precision:'):
+                line = line.replace('Precision: ', '')
+                precision = np.asarray(literal_eval(line), dtype=np.double)
+            if line.startswith('Recall:'):
+                line = line.replace('Recall: ', '')
+                recall = np.asarray(literal_eval(line), dtype=np.double)
+
+        precision = precision + 0.00000000001
+        recall = recall + 0.00000000001
+        return max(2 * (precision * recall) / (precision + recall))
+
+    import xlsxwriter
+
+    min_pred_score = get_min_prediction_score()
+
+    excel_file_path = Path(excel_file_output, 'giana_eval(threshold_{}).xlsx'.format(min_pred_score))
+    workbook = xlsxwriter.Workbook(str(excel_file_path))
+    worksheet = workbook.add_worksheet('threshold {}'.format(min_pred_score))
+
+    # create header
+    algo_header_format = workbook.add_format({'bold': True, 'align': 'center', 'left': 1})
+    map_header_format = workbook.add_format({'bold': True, 'align': 'center', 'bottom': 1, 'left': 1})
+    f1_header_format = workbook.add_format({'bold': True, 'align': 'center', 'bottom': 1})
+    worksheet.merge_range('B1:C1', 'YOLO', algo_header_format)
+    worksheet.write_string('B2', 'mAP', map_header_format)
+    worksheet.write_string('C2', 'F1', f1_header_format)
+    worksheet.merge_range('D1:E1', 'REPP', algo_header_format)
+    worksheet.write_string('D2', 'mAP', map_header_format)
+    worksheet.write_string('E2', 'F1', f1_header_format)
+
+    ws_col_index = 5
+    ws_col_indices = {}
+    for ws_size in repp_rt_window_sizes:
+        worksheet.merge_range(0, ws_col_index, 0, ws_col_index + 1,
+                              'REPP RT (WS {})'.format(ws_size), algo_header_format)
+        worksheet.write_string(1, ws_col_index, 'mAP', map_header_format)
+        worksheet.write_string(1, ws_col_index + 1, 'F1', f1_header_format)
+        ws_col_indices[ws_size] = ws_col_index
+        ws_col_index += 2
+
+    video_name_format = workbook.add_format({'bold': True})
+    map_value_format = workbook.add_format({'num_format': '0.00%', 'align': 'center', 'left': 1})
+    f1_value_format = workbook.add_format({'num_format': '0.00%', 'align': 'center'})
+
+    max_video_name_characters = 9
+
+    # video_folders.sort()
+    for index, seq_num in enumerate(sequence_numbers, start=3):
+        # eval_sequence_folder = Path(giana_source.parent, 'GIANA_evaluation', str(seq_num))
+        folder = Path(giana_source.parent, 'GIANA_evaluation', str(seq_num))
+        # folder = Path(seq_num)
+        worksheet.write_string('A' + str(index), folder.name, video_name_format)
+
+        if max_video_name_characters < len(folder.name):
+            max_video_name_characters = len(folder.name)
+
+        # write YOLO values
+        eval_result_folder = Path(folder, 'eval/yolo_predictions/threshold_{}'.format(min_pred_score))
+        if eval_result_folder.exists():
+            eval_results_file = Path(eval_result_folder, 'results.txt')
+            map_value = get_map_from_file(results_file=eval_results_file)
+            f1_value = calculate_f1(results_file=eval_results_file)
+            worksheet.write_number('B' + str(index), map_value, map_value_format)
+            worksheet.write_number('C' + str(index), f1_value, f1_value_format)
+
+        # write REPP values
+        eval_result_folder = Path(folder, 'eval/repp_predictions/threshold_{}'.format(min_pred_score))
+        if eval_result_folder.exists():
+            eval_results_file = Path(eval_result_folder, 'results.txt')
+            map_value = get_map_from_file(results_file=eval_results_file)
+            f1_value = calculate_f1(results_file=eval_results_file)
+            worksheet.write_number('D' + str(index), map_value, map_value_format)
+            worksheet.write_number('E' + str(index), f1_value, f1_value_format)
+
+        # write REPP RT values
+        eval_result_folder = Path(folder, 'eval/repp_rt_predictions/threshold_{}'.format(min_pred_score))
+        if eval_result_folder.exists():
+            ws_eval_folders = [f for f in eval_result_folder.iterdir() if f.is_dir()]
+            ws_eval_folders.sort(key=lambda n: int(n.name.split('_')[1]))
+            for ws_result_folder in ws_eval_folders:
+                if ws_result_folder.is_dir():
+                    ws_size = int(ws_result_folder.name.split('_')[1].strip())
+                    ws_col_index = ws_col_indices.get(ws_size, None)
+                    if ws_col_index is None:
+                        continue
+                    eval_results_file = Path(ws_result_folder, 'results.txt')
+                    map_value = get_map_from_file(results_file=eval_results_file)
+                    f1_value = calculate_f1(results_file=eval_results_file)
+                    worksheet.write_number(index - 1, ws_col_index, map_value, map_value_format)
+                    worksheet.write_number(index - 1, ws_col_index + 1, f1_value, f1_value_format)
+
+    # fit column width of video names
+    worksheet.set_column(0, 0, max_video_name_characters)
+    workbook.close()
 
 
 def main():
@@ -470,7 +769,11 @@ def main():
         filter_raw_yolo_predictions(sequence_folder=eval_sequence_folder)
 
         delete_first_files_from_folders(eval_sequence_folder)
+        add_empty_files_to_predictions(eval_sequence_folder)
+
+        execute_object_detection_metrics(eval_sequence_folder)
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    gather_evaluation_results()

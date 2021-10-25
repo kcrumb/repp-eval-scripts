@@ -443,7 +443,7 @@ def gather_evaluation_results():
     """
 
     def get_map_from_file(results_file: Path) -> float:
-        """Search for the mAP value in the evalu results file (mostly at the bottom), parses the value
+        """Search for the mAP value in the eval results file (mostly at the bottom), parses the value
         and converts the percentage value in to a value between 0 and 1.
         """
         with open(results_file, mode='r') as f:
