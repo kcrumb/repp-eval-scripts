@@ -12,7 +12,7 @@ Expected structure:
 
     - root_video_folder/yolo_predictions(raw)
 
-      - expected format: <class-id> <rel-x-center> <rel-y-center> <rel-width> <rel-height>, <confidence>
+      - expected format: <class-id> <rel-x-center> <rel-y-center> <rel-width> <rel-height> <confidence>
 
 Folder explanation:
     - frames: contains all frames; some will be deleted if frame does not have a prediction
