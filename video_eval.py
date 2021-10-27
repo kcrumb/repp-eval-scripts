@@ -62,11 +62,19 @@ odm_project_path = Path('D:/Development/Projects/Object-Detection-Metrics-master
 odm_python_executable = Path(odm_project_path, 'venv/Scripts/python.exe')
 # Video evaluation config
 video_folders = [
-    'D:/Development/REPP_TEST/uniklinikum-endo_ci_3',
-    'D:/Development/REPP_TEST/uniklinikum-endo_cj_4'
+    'D:/Development/REPP_videos/uniklinikum-endo_ci_3',
+    'D:/Development/REPP_videos/uniklinikum-endo_cj_4',
+    'D:/Development/REPP_videos/uniklinikum-endo_co_3',
+    'D:/Development/REPP_videos/uniklinikum-endo_co_5',
+    'D:/Development/REPP_videos/uniklinikum-endo_co_6',
+    'D:/Development/REPP_videos/uniklinikum-endo_cr_1',
+    'D:/Development/REPP_videos/uniklinikum-endo_cr_3',
+    'D:/Development/REPP_videos/uniklinikum-endo_cr_4',
+    'D:/Development/REPP_videos/uniklinikum-endo_cr_5',
+    'D:/Development/REPP_videos/uniklinikum-endo_cr_6'
 ]
-repp_rt_window_sizes = [100, 200]
-excel_file_output = Path('D:/Development/REPP_TEST')
+repp_rt_window_sizes = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+excel_file_output = Path('D:/Development/REPP_videos')
 
 
 def delete_frames_outside_range(video_folder: Path):

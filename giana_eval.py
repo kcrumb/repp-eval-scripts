@@ -48,7 +48,7 @@ odm_python_executable = Path(odm_project_path, 'venv/Scripts/python.exe')
 # Video evaluation config
 # sequence_numbers = [5]
 sequence_numbers = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
-repp_rt_window_sizes = [100, 200]
+repp_rt_window_sizes = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
 excel_file_output = Path('D:/Development/GIANA_videos/GIANA_evaluation')
 giana_source = Path('D:/Development/GIANA_videos/GIANA_frames_gt')
 giana_yolo_predictions = Path('D:/Development/GIANA_videos/GIANA_yolo_predictions')
@@ -775,5 +775,5 @@ def main():
 
 
 if __name__ == '__main__':
-    # main()
-    gather_evaluation_results()
+    main()
+    # gather_evaluation_results()
